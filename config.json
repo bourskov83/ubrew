@@ -1,0 +1,27 @@
+{
+    "sensors" :[
+        {
+            "name": "vessel",
+            "rom" : "285ffe370b00001f",
+            "offset" : 0    
+    },
+        {
+            "name": "chamber",
+            "rom": "28aac07c401401ad",
+            "offset" : 0        
+        }
+            ],
+    "wifi" :{
+        "ssid" : "CostaDelBraendkjaergade",
+        "wifi_pw" : "baeller!molly!elvis2012",
+        "mqtt_server" : "172.18.200.30"
+    },
+    "cooling" : {
+        "pin"   : 19,
+        "hysteresis" : 1
+    },
+    "heating" : {
+        "pin"   : 2,
+        "hysteresis" : 1
+    }
+}

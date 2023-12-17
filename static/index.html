@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<script src="https://cdn.rawgit.com/Mikhus/canvas-gauges/gh-pages/download/2.1.7/all/gauge.min.js"></script>
+</head>
+<style>
+    /* CSS styles for form alignment and borderless inputs */
+    form {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .form-group {
+        display: flex;
+        align-items: left;
+        margin-bottom: 10px;
+        width: 5;
+    }
+
+    .form-group label {
+        width: 10px;
+        margin-right: 10px;
+    }
+
+    .form-group input[type="text"] {
+        flex: 0;
+        width:50px;
+        border: none;
+        border-bottom: 1px solid #ccc;
+        border-radius: 0;
+    }
+
+    button {
+        margin-top: 10px;
+    }
+</style>
+<body>
+    <h1>NU Bryg - Fermcontroller</h1>
+
+    <canvas id="gauge-temperature-vessel"></canvas>
+    <canvas id="gauge-temperature-chamber"></canvas>
+    <p>Cooling:<div id="cooling" title="Cooling"></div></p>
+    <p>Heating:
+    <div id="heating" title="Heating"></div>
+    </p>
+
+    <script>
+    // Get current sensor readings when the page loads  
+
+    // Create Temperature Gauge
+    var gaugeTempVessel = new LinearGauge({
+        renderTo: 'gauge-temperature-vessel',
+        width: 200,
+        height: 400,
+        units: "Vessel &deg;C",
+        minValue: -2,
+        startAngle: 90,
+        ticksAngle: 180,
+        maxValue: 35,
+        colorValueBoxRect: "#049faa",
+        colorValueBoxRectEnd: "#049faa",
+        colorValueBoxBackground: "#f1fbfc",
+        valueDec: 2,
+        valueInt: 2,
+        majorTicks: [
+            "0",
+            "5",
+            "10",
+            "15",
+            "20",
+            "25",
+            "30",
+            "35",
+        ],
+        minorTicks: 4,
+        strokeTicks: true,
+        highlights: [
+            
+        ],
+        colorPlate: "#fff",
+        colorBarProgress: "#CC2936",
+        colorBarProgressEnd: "#049faa",
+        borderShadowWidth: 0,
+        borders: false,
+        needleType: "arrow",
+        needleWidth: 4,
+        needleCircleSize: 7,
+        needleCircleOuter: true,
+        needleCircleInner: false,
+        animationDuration: 1500,
+        animationRule: "linear",
+        barWidth: 10,
+    }).draw();
+
+        var gaugeTempChamber = new LinearGauge({
+            renderTo: 'gauge-temperature-chamber',
+            width: 200,
+            height: 400,
+            units: "Chamber &deg;C",
+            minValue: 0,
+            startAngle: 90,
+            ticksAngle: 180,
+            maxValue: 40,
+            colorValueBoxRect: "#049faa",
+            colorValueBoxRectEnd: "#049faa",
+            colorValueBoxBackground: "#f1fbfc",
+            valueDec: 2,
+            valueInt: 2,
+            majorTicks: [
+                "0",
+                "5",
+                "10",
+                "15",
+                "20",
+                "25",
+                "30",
+                "35",
+                "40"
+            ],
+            minorTicks: 5,
+            strokeTicks: true,
+            highlights: [
+               
+            ],
+            colorPlate: "#fff",
+            colorBarProgress: "#CC2936",
+            colorBarProgressEnd: "#049faa",
+            borderShadowWidth: 0,
+            borders: false,
+            needleType: "arrow",
+            needleWidth: 2,
+            needleCircleSize: 7,
+            needleCircleOuter: true,
+            needleCircleInner: false,
+            animationDuration: 1500,
+            animationRule: "linear",
+            barWidth: 10,
+        }).draw();
+
+
+        setInterval(loadValues, 2000);
+
+    window.onload = function () {
+        // Your code here
+        loadSetpoint();
+    };
+
+
+
+        async function loadValues() {
+            let response = await fetch("/api/values");
+            let values = await response.json();
+            gaugeTempVessel.value = values['vessel'];
+            gaugeTempChamber.value = values['chamber'];
+            document.getElementById('cooling').innerHTML = values['coolingState'];
+            document.getElementById('heating').innerHTML = values['heatingState'];
+        }
+
+            async function loadSetpoint() {
+                console.log('loadSetpoint()...');
+                let response = await fetch("/api/setpoint");
+                let values = await response.json();
+                document.getElementById('chamberSetpoint').value = values['chamberSetpoint'];
+                document.getElementById('vesselSetpoint').value = values['vesselSetpoint'];
+                highlights = [{
+                    "from" : values['chamberSetpoint'] - 1,
+                    "to"   : values['chamberSetpoint'] + 1,
+                    "color": "rgba(0, 50, 0, .30)",
+
+                }];
+                gaugeTempChamber.highlights = highlights;
+                gaugeTempChamber.draw();
+                
+
+            }
+
+        async function updateSetpoint() {
+            const chamber = document.getElementById('chamberSetpoint').value
+            const vessel = document.getElementById('vesselSetpoint').value
+            const url = "/api/setpoint?action=update&chamber="+chamber+"&vessel="+vessel;
+            try {
+                const response = await fetch(url);
+                const responseData = await response.json();
+                console.log('Response from server:, responseData');
+
+            } catch (error) {
+                console.error('Error occurred:', error);
+            }
+
+            setTimeout(loadSetpoint, 1000)
+        }
+
+           </script>
+        <form id="setpoint">
+            <div>
+                <label for="Setpoint Chamber">Setpoint Chamber:</label>
+                <input type="text" id="chamberSetpoint" name="chamberSetpoint"><br>
+            </div>
+            <div>
+                <label for="Setpoint Vessel">Setpoint Vessel:</label>
+                <input type="text" id="vesselSetpoint" name="vesselSetpoint"><br>
+            </div>
+            <div >
+        
+                <button type="button" onclick="updateSetpoint()">Update</button>
+            </div>
+        </form>
+
+</body>
+
+</html>
