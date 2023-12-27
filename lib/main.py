@@ -11,6 +11,55 @@ from PID import PID
 import tm1637
 
 
+class Vessel:
+    def __init__(self, outputPin, ds18x20, sensorRom, mqttClient, sensorOffset: float = 0, kP=0,kI=0,kD=0):
+        # Output definitions
+        self.pwm = machine.PWM(machine.Pin(outputPin))
+        self.pwm.freq(1)
+
+        # Sensors
+        self.ds18x20 = ds18x20
+        self.sensorRom = sensorRom
+        self.sensorOffset = sensorOffset
+
+        # PID init
+        self.pid = PID(kP, kI, kD, scale='ms')
+        self._setPoint: float = 0
+        self.currentTemperature = 0
+        self.pid.output_limits = (0,1023) # match PWM duty range
+
+
+        # MQTT
+        self.mqtt = mqttClient
+
+
+    def read_temperature(self):
+        self.currentTemperature = self.ds18x20.read_temp(bytes.fromhex(self.sensorRom)) + self.sensorOffset
+        return self.currentTemperature
+    
+
+    def control_update(self):
+        output = self.pid(self.currentTemperature)
+        self.pwm.duty(int(output))
+
+        
+    @property
+    def setpoint(self):
+        return self._setPoint
+
+    @setpoint.setter
+    def setpoint(self, value):
+        self._setPoint = value
+        self.pid.setpoint = value
+    
+    def pid_auto_mode(self, auto_mode: bool = True, last_output: float = 0):
+        if auto_mode:
+            self.pid.set_auto_mode(True, last_output=last_output)
+        else:
+            self.pid.auto_mode = False
+
+
+
 
 # Pin definitions
 ONEWIRE_PIN = 32
@@ -30,8 +79,9 @@ with open('setpoint.json') as f:
 
 
 #heating = machine.Pin(HEATING_PIN, machine.Pin.OUT)
-heating = machine.PWM(HEATING_PIN)
-heating.freq(1)
+#heating = machine.PWM(HEATING_PIN)
+#heating.freq(1)
+
 displayMlt = tm1637.TM1637(clk=machine.Pin(displayPinClk),dio=machine.Pin(displayPinDio))
 
     
@@ -47,14 +97,20 @@ displayMlt = tm1637.TM1637(clk=machine.Pin(displayPinClk),dio=machine.Pin(displa
 owPin = machine.Pin(ONEWIRE_PIN)
 ds_sensors = ds18x20.DS18X20(onewire.OneWire(owPin))
 ds_roms = ds_sensors.scan()
-temp_sensors = config['sensors']
-for i in temp_sensors:
-    i['value'] = "NA"
+#temp_sensors = config['sensors']
+#for i in temp_sensors:
+#    i['value'] = "NA"
 
-print(temp_sensors)
+#print(temp_sensors)
 
-mltPid = PID(1,3,0.2, setpoint=50, scale='ms')
-mltPid.output_limits=(0,1023)
+
+mlt = Vessel(4,ds_sensors,config['sensors']['mlt']['rom'],None,config['sensors']['mlt']['offset'])
+mlt.setpoint = 40
+
+
+#mltPid = PID(1,3,0.2, setpoint=50, scale='ms')
+#mltPid.output_limits=(0,1023)
+#mltPid()
 
 #async def mqtt_connect(client):
 #    await client.connect()
@@ -65,14 +121,14 @@ mltPid.output_limits=(0,1023)
 async def temp_sensor_read():
     while True:
         ds_sensors.convert_temp()
-        await uasyncio.sleep_ms(1000)
+        await uasyncio.sleep_ms(800)
         
-        for sensor in temp_sensors:
-            try:
-                sensor['value'] = ds_sensors.read_temp(bytes.fromhex(sensor['rom'])) + sensor['offset']
-            except Exception as E:
-                print(f"Error reading {sensor['name']} Exception: {E}")
-                sensor['value'] = "NA"
+ #       for sensor in temp_sensors:
+ #           try:
+ #               sensor['value'] = ds_sensors.read_temp(bytes.fromhex(sensor['rom'])) + sensor['offset']
+ #           except Exception as E:
+ #               print(f"Error reading {sensor['name']} Exception: {E}")
+ #               sensor['value'] = "NA"
              
         
 #async def mqtt_update(client):
@@ -132,14 +188,20 @@ async def temp_sensor_read():
 async def updateOutput():
     while True:
         await uasyncio.sleep_ms(500)
-        print(temp_sensors)
+        mlt.read_temperature()
+        mlt.control_update()
+
+        print(mlt.currentTemperature)
+        print(mlt.pwm.duty())
+
+        #print(temp_sensors)
         #print(f"MLT HEAT: {heating.value()}")
-        mlt_temp = next((sensor['value'] for sensor in temp_sensors if sensor['name'] == 'mlt'))
-        if mlt_temp != "NA":
-            control=mltPid(mlt_temp)
-            print(control)
-            heating.duty(int(control))
-            displayMlt.temperature(int(mlt_temp))
+       # mlt_temp = next((sensor['value'] for sensor in temp_sensors if sensor['name'] == 'mlt'))
+       # if mlt_temp != "NA":
+       #     control=mltPid(mlt_temp)
+       #     print(control)
+       #     heating.duty(int(control))
+       #     displayMlt.temperature(int(mlt_temp))
 
 #        if mlt_temp <= 40:
 #            heating.on()

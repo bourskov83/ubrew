@@ -1,11 +1,11 @@
 {
-    "sensors" :[
-        {
-            "name": "mlt",
+    "sensors" : {
+        "mlt" : {
             "rom" : "285ffe370b00001f",
             "offset" : 0    
+        }
     }
-            ],
+            ,
     "wifi" :{
         "ssid" : "CostaDelBraendkjaergade",
         "wifi_pw" : "baeller!molly!elvis2012",
