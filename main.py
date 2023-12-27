@@ -7,7 +7,7 @@ import binascii
 import ujson
 from mqtt_as import MQTTClient
 from mqtt_as import config as mqtt_config
-from PID import PID
+from lib.PID import PID
 import tm1637
 
 
