@@ -1,15 +1,10 @@
 {
     "sensors" :[
         {
-            "name": "vessel",
+            "name": "mlt",
             "rom" : "285ffe370b00001f",
             "offset" : 0    
-    },
-        {
-            "name": "chamber",
-            "rom": "28aac07c401401ad",
-            "offset" : 0        
-        }
+    }
             ],
     "wifi" :{
         "ssid" : "CostaDelBraendkjaergade",
