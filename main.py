@@ -68,6 +68,11 @@ class Vessel:
             value = round((self.pwm.duty() / 1023 * 100),2)
         return value
     
+    @output.setter
+    def output(self, value):
+        self.pid_auto_mode(False)
+        self.pwm.duty((int(value)/100)*1023) # convert from percentage to duty cycle
+    
 
 
 
@@ -94,12 +99,22 @@ with open('setpoint.json') as f:
 
 displayMlt = tm1637.TM1637(clk=machine.Pin(displayPinClk),dio=machine.Pin(displayPinDio))
 
+mqtt_topic_mapping = {
+    b'ubrew/mlt/setpoint': (mlt, 'setpoint'),
+    b'ubrew/mlt/powerlevel': (mlt,'output')
+}
 
 
-def callback(topic, msg, retained):
-    print((topic.decode(), msg.decode(), retained))
-    if topic.decode() == 'ubrew/mlt/setpoint' :
-        mlt.setpoint = int(msg.decode())
+def callback(topic, msg):
+    topic = topic.decode()
+    payload = ujson.loads(msg)
+    print(topic)
+    print(payload)
+
+    if topic in mqtt_topic_mapping:
+        controller, property_name = mqtt_topic_mapping[topic]
+        setattr(controller, property_name, payload)
+
 
 async def conn_han(client):
     await client.subscribe('ubrew/mlt/setpoint', 1)
