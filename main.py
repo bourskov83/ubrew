@@ -65,7 +65,7 @@ class Vessel:
         if self.pwm.duty() == 0:
             value = 0
         else:
-            value = self.pwm.duty() / 1023 * 100
+            value = round((self.pwm.duty() / 1023 * 100),2)
         return value
     
 
@@ -94,11 +94,23 @@ with open('setpoint.json') as f:
 
 displayMlt = tm1637.TM1637(clk=machine.Pin(displayPinClk),dio=machine.Pin(displayPinDio))
 
-    
+
+
+def callback(topic, msg, retained):
+    print((topic.decode(), msg.decode(), retained))
+    if topic.decode() == 'ubrew/mlt/setpoint' :
+        mlt.setpoint = int(msg.decode())
+
+async def conn_han(client):
+    await client.subscribe('ubrew/mlt/setpoint', 1)
+
+
+
 mqtt_config['server'] = config['wifi']['mqtt_server']
 mqtt_config['ssid'] = config['wifi']['ssid']
 mqtt_config['wifi_pw'] = config['wifi']['wifi_pw']
-
+mqtt_config['subs_cb'] = callback
+mqtt_config['connect_coro'] = conn_han
 
 MQTTClient.DEBUG = True # type: ignore
 mqtt = MQTTClient(mqtt_config)
@@ -115,12 +127,13 @@ ds_roms = ds_sensors.scan()
 
 
 mlt = Vessel(4,ds_sensors,config['sensors']['mlt']['rom'],config['sensors']['mlt']['offset'],kP=1,kI=3,kD=0.2)
-mlt.setpoint = 35
+#mlt.setpoint = 22
 
 
 #mltPid = PID(1,3,0.2, setpoint=50, scale='ms')
 #mltPid.output_limits=(0,1023)
 #mltPid()
+
 
 async def mqtt_connect(client):
     await client.connect()
@@ -147,9 +160,8 @@ async def mqtt_update(client):
  
         await client.publish("ubrew/mlt/temperature",str(mlt.currentTemperature),qos=1)
         await client.publish("ubrew/mlt/output",str(mlt.output),qos=1)
-        await client.publish("ubrew/mlt/setpoint",str(mlt.setpoint),qos=1)
-        
-#
+      #  await client.publish("ubrew/mlt/setpoint",str(mlt.setpoint),qos=1)
+
 #
 #app = Microdot()
 #
@@ -197,10 +209,10 @@ async def updateOutput():
         mlt.read_temperature()
         mlt.control_update()
 
-        data = {'pv':mlt.currentTemperature,
-                'sp':mlt.setpoint,
-                'output':mlt.output}
-        print(data)
+        # data = {'pv':mlt.currentTemperature,
+        #         'sp':mlt.setpoint,
+        #         'output':mlt.output}
+        #print(data)
         displayMlt.temperature(int(mlt.currentTemperature))
 
    #    wdt.feed()
