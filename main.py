@@ -57,7 +57,20 @@ class Vessel:
             self.pid.set_auto_mode(True, last_output=last_output)
         else:
             self.pid.auto_mode = False
-
+    
+    @property
+    def output(self):
+        if self.pwm.duty() == 0:
+            value = 0
+        else:
+            value = self.pwm.duty() / 1023 * 100
+        return value
+    
+    async def publish(self):
+        print("publish()")
+        await self.mqtt.publish("ubrew/mlt/temperature",str(self.currentTemperature),qos=1)
+        await self.mqtt.publish("ubrew/mlt/output", str(self.output), qos=1)
+        await self.mqtt.publish("ubrew/mlt/setpoint", str(self.setpoint), qos=1)
 
 
 
@@ -85,13 +98,13 @@ with open('setpoint.json') as f:
 displayMlt = tm1637.TM1637(clk=machine.Pin(displayPinClk),dio=machine.Pin(displayPinDio))
 
     
-#mqtt_config['server'] = config['wifi']['mqtt_server']
-#mqtt_config['ssid'] = config['wifi']['ssid']
-#mqtt_config['wifi_pw'] = config['wifi']['wifi_pw']
+mqtt_config['server'] = config['wifi']['mqtt_server']
+mqtt_config['ssid'] = config['wifi']['ssid']
+mqtt_config['wifi_pw'] = config['wifi']['wifi_pw']
 
 
-#MQTTClient.DEBUG = True # type: ignore
-#mqttclient = MQTTClient(mqtt_config)
+MQTTClient.DEBUG = True # type: ignore
+mqtt = MQTTClient(mqtt_config)
 
 
 owPin = machine.Pin(ONEWIRE_PIN)
@@ -104,7 +117,7 @@ ds_roms = ds_sensors.scan()
 #print(temp_sensors)
 
 
-mlt = Vessel(4,ds_sensors,config['sensors']['mlt']['rom'],None,config['sensors']['mlt']['offset'])
+mlt = Vessel(4,ds_sensors,config['sensors']['mlt']['rom'],mqtt,config['sensors']['mlt']['offset'],kP=1,kI=3,kD=0.2)
 mlt.setpoint = 40
 
 
@@ -112,10 +125,10 @@ mlt.setpoint = 40
 #mltPid.output_limits=(0,1023)
 #mltPid()
 
-#async def mqtt_connect(client):
-#    await client.connect()
+async def mqtt_connect(client):
+    await client.connect()
 
-#    await client.publish("fermcontrol/ipaddr", str(client._sta_if.ifconfig()[0]),qos=1)
+    await client.publish("ubrew/ipaddr", str(client._sta_if.ifconfig()[0]),qos=1)
 
 
 async def temp_sensor_read():
@@ -130,7 +143,12 @@ async def temp_sensor_read():
  #               print(f"Error reading {sensor['name']} Exception: {E}")
  #               sensor['value'] = "NA"
              
-        
+async def telemetry():
+    while True:
+        mlt.publish()
+        print("telemetry")
+        await uasyncio.sleep(1)
+
 #async def mqtt_update(client):
 #    while True:
 #        await uasyncio.sleep(10)
@@ -188,11 +206,13 @@ async def temp_sensor_read():
 async def updateOutput():
     while True:
         await uasyncio.sleep_ms(500)
+        print("mlt set:" + str(mlt.pid.setpoint))
         mlt.read_temperature()
         mlt.control_update()
 
         print(mlt.currentTemperature)
         print(mlt.pwm.duty())
+        print(mlt.output)
 
         #print(temp_sensors)
         #print(f"MLT HEAT: {heating.value()}")
@@ -237,8 +257,9 @@ async def updateOutput():
 loop = uasyncio.get_event_loop()    
 loop.create_task(temp_sensor_read())
 #loop.create_task(start_server())
-#loop.create_task(mqtt_connect(mqttclient))
-#loop.create_task(mqtt_update(mqttclient))
+loop.create_task(mqtt_connect(mqtt))
+#loop.create_task(mqtt_update(mqtt))
 #loop.create_task(showResult())
+loop.create_task(telemetry())
 loop.create_task(updateOutput())
 loop.run_forever()
