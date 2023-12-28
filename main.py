@@ -12,10 +12,11 @@ import tm1637
 
 
 class Vessel:
-    def __init__(self, outputPin, ds18x20, sensorRom, mqttClient, sensorOffset: float = 0, kP=0,kI=0,kD=0):
+    def __init__(self, outputPin, ds18x20, sensorRom, sensorOffset: float = 0, kP:float=0,kI:float=0,kD:float=0):
         # Output definitions
         self.pwm = machine.PWM(machine.Pin(outputPin))
-        self.pwm.freq(1)
+        self.pwm.freq(10)
+        self._min_pwm_pulse = 10 #ms
 
         # Sensors
         self.ds18x20 = ds18x20
@@ -29,9 +30,7 @@ class Vessel:
         self.pid.output_limits = (0,1023) # match PWM duty range
 
 
-        # MQTT
-        self.mqtt = mqttClient
-
+      
 
     def read_temperature(self):
         self.currentTemperature = self.ds18x20.read_temp(bytes.fromhex(self.sensorRom)) + self.sensorOffset
@@ -40,7 +39,10 @@ class Vessel:
 
     def control_update(self):
         output = self.pid(self.currentTemperature)
+        if 1 <= output <= 102: # output above 0 but less than minimum pulse length 
+            output = 103 # set output level to 10% ()
         self.pwm.duty(int(output))
+
 
         
     @property
@@ -66,11 +68,6 @@ class Vessel:
             value = self.pwm.duty() / 1023 * 100
         return value
     
-    async def publish(self):
-        print("publish()")
-        await self.mqtt.publish("ubrew/mlt/temperature",str(self.currentTemperature),qos=1)
-        await self.mqtt.publish("ubrew/mlt/output", str(self.output), qos=1)
-        await self.mqtt.publish("ubrew/mlt/setpoint", str(self.setpoint), qos=1)
 
 
 
@@ -81,7 +78,7 @@ displayPinClk = 14
 displayPinDio = 27
 
 # Initialize Watchdog
-wdt = machine.WDT(timeout=5000)
+#wdt = machine.WDT(timeout=5000)
 
 
 
@@ -117,8 +114,8 @@ ds_roms = ds_sensors.scan()
 #print(temp_sensors)
 
 
-mlt = Vessel(4,ds_sensors,config['sensors']['mlt']['rom'],mqtt,config['sensors']['mlt']['offset'],kP=1,kI=3,kD=0.2)
-mlt.setpoint = 40
+mlt = Vessel(4,ds_sensors,config['sensors']['mlt']['rom'],config['sensors']['mlt']['offset'],kP=1,kI=3,kD=0.2)
+mlt.setpoint = 35
 
 
 #mltPid = PID(1,3,0.2, setpoint=50, scale='ms')
@@ -143,23 +140,14 @@ async def temp_sensor_read():
  #               print(f"Error reading {sensor['name']} Exception: {E}")
  #               sensor['value'] = "NA"
              
-async def telemetry():
+
+async def mqtt_update(client):
     while True:
-        mlt.publish()
-        print("telemetry")
         await uasyncio.sleep(1)
-
-#async def mqtt_update(client):
-#    while True:
-#        await uasyncio.sleep(10)
-
-#        for i in temp_sensors:
-#            if i['value'] != "NA":
-#                await client.publish(f"fermcontrol/{i['name']}/temperature/state",str(round(i['value'],1)),qos=1)
-#        await client.publish("fermcontrol/cooling/state",str(cooling.value()),qos=1)
-#        await client.publish("fermcontrol/heating/state",str(heating.value()),qos=1)
-#        await client.publish("fermcontrol/chambersetpoint/state",setpoint['chamberSetpoint'],qos=1)
-#        await client.publish("fermcontrol/vesselsetpoint/state",setpoint['vesselSetpoint'],qos=1)
+ 
+        await client.publish("ubrew/mlt/temperature",str(mlt.currentTemperature),qos=1)
+        await client.publish("ubrew/mlt/output",str(mlt.output),qos=1)
+        await client.publish("ubrew/mlt/setpoint",str(mlt.setpoint),qos=1)
         
 #
 #
@@ -206,60 +194,22 @@ async def telemetry():
 async def updateOutput():
     while True:
         await uasyncio.sleep_ms(500)
-        print("mlt set:" + str(mlt.pid.setpoint))
         mlt.read_temperature()
         mlt.control_update()
 
-        print(mlt.currentTemperature)
-        print(mlt.pwm.duty())
-        print(mlt.output)
+        data = {'pv':mlt.currentTemperature,
+                'sp':mlt.setpoint,
+                'output':mlt.output}
+        print(data)
+        displayMlt.temperature(int(mlt.currentTemperature))
 
-        #print(temp_sensors)
-        #print(f"MLT HEAT: {heating.value()}")
-       # mlt_temp = next((sensor['value'] for sensor in temp_sensors if sensor['name'] == 'mlt'))
-       # if mlt_temp != "NA":
-       #     control=mltPid(mlt_temp)
-       #     print(control)
-       #     heating.duty(int(control))
-       #     displayMlt.temperature(int(mlt_temp))
-
-#        if mlt_temp <= 40:
-#            heating.on()
-#        else:
-#            heating.off()
-
-
-        
-
-#        coolStart = int(setpoint['chamberSetpoint']) + int(config['cooling']['hysteresis']) / 2 
-#        coolStop = int(setpoint['chamberSetpoint']) - int(config['cooling']['hysteresis']) / 2 + 0.3
-#        heatStart = int(setpoint['chamberSetpoint']) - int(config['heating']['hysteresis']) / 2 
-#        heatStop = int(setpoint['chamberSetpoint']) + int(config['heating']['hysteresis']) / 2 - 0.3
-#        
-#        chamber_value = next((sensor['value'] for sensor in temp_sensors if sensor['name'] == 'chamber'))
-#        
-#        if chamber_value >= coolStart:
-#            if not cooling.value():
-#                cooling.on()
-#        elif chamber_value <= coolStop:
-#            if cooling.value():
- #              cooling.off()
-#
- #       if chamber_value <= heatStart:
- #           if not heating.value():
- #               heating.on()
- #       elif chamber_value >= heatStop:
- #           if heating.value():
- #              heating.off()
-
-        wdt.feed()
+   #    wdt.feed()
 
 loop = uasyncio.get_event_loop()    
 loop.create_task(temp_sensor_read())
 #loop.create_task(start_server())
 loop.create_task(mqtt_connect(mqtt))
-#loop.create_task(mqtt_update(mqtt))
+loop.create_task(mqtt_update(mqtt))
 #loop.create_task(showResult())
-loop.create_task(telemetry())
 loop.create_task(updateOutput())
 loop.run_forever()
